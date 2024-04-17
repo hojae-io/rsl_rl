@@ -66,7 +66,7 @@ class OnPolicyRunner:
 
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):
         # initialize writer
-        if self.log_dir is not None and self.writer is None:
+        if self.log_dir is not None and self.writer is None and self.cfg["enable_logging"]:
             # Launch either Tensorboard or Neptune & Tensorboard summary writer(s), default: Tensorboard.
             self.logger_type = self.cfg.get("logger", "tensorboard")
             self.logger_type = self.logger_type.lower()
@@ -152,20 +152,20 @@ class OnPolicyRunner:
             self.current_learning_iteration = it
             if self.log_dir is not None:
                 self.log(locals())
-            if it % self.save_interval == 0:
+            if (it % self.save_interval == 0) and self.cfg["enable_logging"]:
                 self.save(os.path.join(self.log_dir, f"model_{it}.pt"))
             ep_infos.clear()
-            if it == start_iter and self.cfg.get("store_code_state", True):
+            if it == start_iter and self.cfg.get("store_code_state", True) and self.cfg["enable_logging"]:
                 # obtain all the diff files
                 git_file_paths = store_code_state(self.log_dir, self.git_status_repos)
                 # if possible store them to wandb
                 if self.logger_type in ["wandb", "neptune"] and git_file_paths:
                     for path in git_file_paths:
                         self.writer.save_file(path)
+        if self.cfg["enable_logging"]:
+            self.save(os.path.join(self.log_dir, f"model_{self.current_learning_iteration}.pt"))
 
-        self.save(os.path.join(self.log_dir, f"model_{self.current_learning_iteration}.pt"))
-
-    def log(self, locs: dict, width: int = 80, pad: int = 35):
+    def log(self, locs: dict, width: int = 100, pad: int = 45):
         self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
         self.tot_time += locs["collection_time"] + locs["learn_time"]
         iteration_time = locs["collection_time"] + locs["learn_time"]
@@ -186,32 +186,35 @@ class OnPolicyRunner:
                 value = torch.mean(infotensor)
                 # log to logger and terminal
                 if "/" in key:
-                    self.writer.add_scalar(key, value, locs["it"])
+                    if self.cfg["enable_logging"]:
+                        self.writer.add_scalar(key, value, locs["it"])
                     ep_string += f"""{f'{key}:':>{pad}} {value:.4f}\n"""
                 else:
-                    self.writer.add_scalar("Episode/" + key, value, locs["it"])
+                    if self.cfg["enable_logging"]:
+                        self.writer.add_scalar("Episode/" + key, value, locs["it"])
                     ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
         mean_std = self.alg.actor_critic.std.mean()
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs["collection_time"] + locs["learn_time"]))
 
-        self.writer.add_scalar("Loss/value_function", locs["mean_value_loss"], locs["it"])
-        self.writer.add_scalar("Loss/surrogate", locs["mean_surrogate_loss"], locs["it"])
-        self.writer.add_scalar("Loss/learning_rate", self.alg.learning_rate, locs["it"])
-        self.writer.add_scalar("Policy/mean_noise_std", mean_std.item(), locs["it"])
-        self.writer.add_scalar("Perf/total_fps", fps, locs["it"])
-        self.writer.add_scalar("Perf/collection time", locs["collection_time"], locs["it"])
-        self.writer.add_scalar("Perf/learning_time", locs["learn_time"], locs["it"])
-        if len(locs["rewbuffer"]) > 0:
-            self.writer.add_scalar("Train/mean_reward", statistics.mean(locs["rewbuffer"]), locs["it"])
-            self.writer.add_scalar("Train/mean_episode_length", statistics.mean(locs["lenbuffer"]), locs["it"])
-            if self.logger_type != "wandb":  # wandb does not support non-integer x-axis logging
-                self.writer.add_scalar("Train/mean_reward/time", statistics.mean(locs["rewbuffer"]), self.tot_time)
-                self.writer.add_scalar(
-                    "Train/mean_episode_length/time", statistics.mean(locs["lenbuffer"]), self.tot_time
-                )
+        if self.cfg["enable_logging"]:
+            self.writer.add_scalar("Loss/value_function", locs["mean_value_loss"], locs["it"])
+            self.writer.add_scalar("Loss/surrogate", locs["mean_surrogate_loss"], locs["it"])
+            self.writer.add_scalar("Loss/learning_rate", self.alg.learning_rate, locs["it"])
+            self.writer.add_scalar("Policy/mean_noise_std", mean_std.item(), locs["it"])
+            self.writer.add_scalar("Perf/total_fps", fps, locs["it"])
+            self.writer.add_scalar("Perf/collection time", locs["collection_time"], locs["it"])
+            self.writer.add_scalar("Perf/learning_time", locs["learn_time"], locs["it"])
+            if len(locs["rewbuffer"]) > 0:
+                self.writer.add_scalar("Train/mean_reward", statistics.mean(locs["rewbuffer"]), locs["it"])
+                self.writer.add_scalar("Train/mean_episode_length", statistics.mean(locs["lenbuffer"]), locs["it"])
+                if self.logger_type != "wandb":  # wandb does not support non-integer x-axis logging
+                    self.writer.add_scalar("Train/mean_reward/time", statistics.mean(locs["rewbuffer"]), self.tot_time)
+                    self.writer.add_scalar(
+                        "Train/mean_episode_length/time", statistics.mean(locs["lenbuffer"]), self.tot_time
+                    )
 
         # Video recording for wandb
-        if self.logger_type == "wandb":
+        if self.cfg["enable_logging"] and self.logger_type == "wandb":
             self.writer.update_video_files(log_name="Video", fps=30)
 
         str = f" \033[1m Learning iteration {locs['it']}/{locs['tot_iter']} \033[0m "
