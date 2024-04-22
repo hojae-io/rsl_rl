@@ -35,7 +35,7 @@ class WandbSummaryWriter(SummaryWriter):
         wandb.init(project=project, entity=entity)
 
         # Change generated name to project-number format
-        wandb.run.name = project + wandb.run.name.split("-")[-1]
+        wandb.run.name = os.path.split(log_dir)[-1]
         with open(os.path.join(log_dir, "wandb_info.json"), "w") as f:
             json.dump({"wandb_run_id": wandb.run.id, "wandb_run_name": wandb.run.name}, f)
 

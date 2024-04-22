@@ -103,7 +103,7 @@ class OnPolicyRunner:
 
         start_iter = self.current_learning_iteration
         tot_iter = start_iter + num_learning_iterations
-        for it in range(start_iter, tot_iter):
+        for it in range(start_iter+1, tot_iter+1):
             start = time.time()
             # Rollout
             with torch.inference_mode():
@@ -155,14 +155,14 @@ class OnPolicyRunner:
             if (it % self.save_interval == 0) and self.cfg["enable_logging"]:
                 self.save(os.path.join(self.log_dir, f"model_{it}.pt"))
             ep_infos.clear()
-            if it == start_iter and self.cfg.get("store_code_state", True) and self.cfg["enable_logging"]:
+            if it == (start_iter+1) and self.cfg.get("store_code_state", True) and self.cfg["enable_logging"]:
                 # obtain all the diff files
                 git_file_paths = store_code_state(self.log_dir, self.git_status_repos)
                 # if possible store them to wandb
                 if self.logger_type in ["wandb", "neptune"] and git_file_paths:
                     for path in git_file_paths:
                         self.writer.save_file(path)
-        if self.cfg["enable_logging"]:
+        if (it % self.save_interval != 0) and self.cfg["enable_logging"]:
             self.save(os.path.join(self.log_dir, f"model_{self.current_learning_iteration}.pt"))
 
     def log(self, locs: dict, width: int = 100, pad: int = 45):
