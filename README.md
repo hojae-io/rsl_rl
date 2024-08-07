@@ -57,4 +57,4 @@ pre-commit run --all-files
 Environment repositories using the framework:
 
 * `Legged-Gym` (built on top of NVIDIA Isaac Gym): https://leggedrobotics.github.io/legged_gym/
-* `Orbit` (built on top of NVIDIA Isaac Sim): https://isaac-orbit.github.io/
+* `IsaacLab` (built on top of NVIDIA Isaac Sim): https://isaac-sim.github.io/IsaacLab/
