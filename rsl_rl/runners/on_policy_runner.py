@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter as TensorboardSummaryWriter
 import rsl_rl
 from rsl_rl.algorithms import PPO
 from rsl_rl.env import VecEnv
-from rsl_rl.modules import ActorCritic, ActorCriticRecurrent, EmpiricalNormalization
+from rsl_rl.modules import ActorCritic
 from rsl_rl.utils import store_code_state
 
 
@@ -31,30 +31,22 @@ class OnPolicyRunner:
         num_critic_obs = critic_obs.shape[1]
 
         actor_critic_class = eval(self.policy_cfg.pop("class_name"))  # ActorCritic
-        actor_critic: ActorCritic | ActorCriticRecurrent = actor_critic_class(
+        actor_critic: ActorCritic = actor_critic_class(
             num_actor_obs, num_critic_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)
         alg_class = eval(self.alg_cfg.pop("class_name"))  # PPO
         self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
-        self.empirical_normalization = self.cfg["empirical_normalization"]
-        if self.empirical_normalization:
-            self.obs_normalizer = EmpiricalNormalization(shape=[num_actor_obs], until=1.0e8).to(self.device)
-            self.critic_obs_normalizer = EmpiricalNormalization(shape=[num_critic_obs], until=1.0e8).to(self.device)
-        else:
-            self.obs_normalizer = torch.nn.Identity()  # no normalization
-            self.critic_obs_normalizer = torch.nn.Identity()  # no normalization
-        # init storage and model
-        self.alg.init_storage(
-            self.env.num_envs,
-            self.num_steps_per_env,
-            [num_actor_obs],
-            [num_critic_obs],
-            [self.env.num_actions],
-        )
 
-        # Log
+        # * init storage and model
+        self.alg.init_storage(self.env.num_envs,
+                              self.num_steps_per_env,
+                              num_actor_obs,
+                              num_critic_obs,
+                              self.env.num_actions)
+
+        # * Log
         self.log_dir = log_dir
         self.writer = None
         self.tot_timesteps = 0
@@ -63,7 +55,7 @@ class OnPolicyRunner:
         self.git_status_repos = [rsl_rl.__file__]
 
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):
-        # initialize writer
+        # * initialize writer
         if self.log_dir is not None and self.writer is None and self.cfg["enable_logging"]:
             # Launch either Tensorboard or Neptune & Tensorboard summary writer(s), default: Tensorboard.
             self.logger_type = self.cfg.get("logger", "tensorboard")
@@ -96,23 +88,26 @@ class OnPolicyRunner:
         lenbuffer = deque(maxlen=100)
         cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
+        
+        if self.cfg["enable_logging"]:
+            self.save(os.path.join(self.log_dir, f"model_0.pt"))
 
         start_iter = self.current_learning_iteration
         tot_iter = start_iter + num_learning_iterations
         for it in range(start_iter+1, tot_iter+1):
             start = time.time()
-            # Rollout
+            # * Rollout
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                     actions = self.alg.act(actor_obs, critic_obs)
                     obs_dict, rewards, dones, infos = self.env.step(actions)
-                    actor_obs = self.obs_normalizer(obs_dict["actor"])
-                    critic_obs = self.critic_obs_normalizer(obs_dict["critic"])
+                    actor_obs = obs_dict["actor"]
+                    critic_obs = obs_dict["critic"]
 
-                    self.alg.process_env_step(rewards, dones, infos)
+                    self.alg.process_env_step(rewards, dones, infos["time_outs"])
 
                     if self.log_dir is not None:
-                        # Book keeping
+                        # * Book keeping
                         if "episode" in infos:
                             ep_infos.append(infos["episode"])
                         elif "log" in infos:
@@ -128,7 +123,7 @@ class OnPolicyRunner:
                 stop = time.time()
                 collection_time = stop - start
 
-                # Learning step
+                # * Learning step
                 start = stop
                 self.alg.compute_returns(critic_obs)
 
@@ -250,9 +245,7 @@ class OnPolicyRunner:
             "iter": self.current_learning_iteration,
             "infos": infos,
         }
-        if self.empirical_normalization:
-            saved_dict["obs_norm_state_dict"] = self.obs_normalizer.state_dict()
-            saved_dict["critic_obs_norm_state_dict"] = self.critic_obs_normalizer.state_dict()
+
         torch.save(saved_dict, path)
 
         # Upload model to external logging service
@@ -262,9 +255,6 @@ class OnPolicyRunner:
     def load(self, path, load_optimizer=True):
         loaded_dict = torch.load(path)
         self.alg.actor_critic.load_state_dict(loaded_dict["model_state_dict"])
-        if self.empirical_normalization:
-            self.obs_normalizer.load_state_dict(loaded_dict["obs_norm_state_dict"])
-            self.critic_obs_normalizer.load_state_dict(loaded_dict["critic_obs_norm_state_dict"])
         if load_optimizer:
             self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
         self.current_learning_iteration = loaded_dict["iter"]
@@ -275,23 +265,13 @@ class OnPolicyRunner:
         if device is not None:
             self.alg.actor_critic.to(device)
         policy = self.alg.actor_critic.act_inference
-        if self.cfg["empirical_normalization"]:
-            if device is not None:
-                self.obs_normalizer.to(device)
-            policy = lambda x: self.alg.actor_critic.act_inference(self.obs_normalizer(x))  # noqa: E731
         return policy
 
     def train_mode(self):
         self.alg.actor_critic.train()
-        if self.empirical_normalization:
-            self.obs_normalizer.train()
-            self.critic_obs_normalizer.train()
 
     def eval_mode(self):
         self.alg.actor_critic.eval()
-        if self.empirical_normalization:
-            self.obs_normalizer.eval()
-            self.critic_obs_normalizer.eval()
 
     def add_git_repo_to_log(self, repo_file_path):
         self.git_status_repos.append(repo_file_path)

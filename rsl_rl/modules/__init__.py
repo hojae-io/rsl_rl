@@ -4,7 +4,7 @@
 """Definitions for neural-network components for RL-agents."""
 
 from .actor_critic import ActorCritic
-from .actor_critic_recurrent import ActorCriticRecurrent
-from .normalizer import EmpiricalNormalization
+from .actor import Actor
+from .critic import Critic
 
-__all__ = ["ActorCritic", "ActorCriticRecurrent"]
+__all__ = ["ActorCritic"]
