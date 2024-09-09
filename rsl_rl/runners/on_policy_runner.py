@@ -253,7 +253,14 @@ class OnPolicyRunner:
             self.writer.save_model(path, self.current_learning_iteration)
 
     def load(self, path, load_optimizer=True):
-        loaded_dict = torch.load(path)
+        try:
+            loaded_dict = torch.load(path)
+        except:
+            import sys
+            sys.modules['learning'] = sys.modules['rsl_rl']
+            sys.modules['learning.storage'] = sys.modules['rsl_rl.storage']
+            loaded_dict = torch.load(path)
+
         self.alg.actor_critic.load_state_dict(loaded_dict["model_state_dict"])
         if load_optimizer:
             self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])

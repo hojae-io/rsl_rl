@@ -12,23 +12,25 @@ class ActorCritic(nn.Module):
                        activation="elu",
                        init_noise_std=1.0,
                        normalize_obs=False,
+                       custom_initialization=False,
                        **kwargs):
 
         if kwargs:
             print("ActorCritic.__init__ got unexpected arguments, which will be ignored: " + str([key for key in kwargs.keys()]))
         super(ActorCritic, self).__init__()
 
-        self.actor = Actor(num_actor_obs,
-                           num_actions,
-                           actor_hidden_dims,
-                           activation,
-                           init_noise_std,
-                           normalize_obs)
+        self.actor = Actor(num_obs=num_actor_obs,
+                           num_actions=num_actions,
+                           hidden_dims=actor_hidden_dims,
+                           activation=activation,
+                           init_noise_std=init_noise_std,
+                           normalize_obs=normalize_obs,
+                           custom_initialization=custom_initialization)
 
-        self.critic = Critic(num_critic_obs,
-                             critic_hidden_dims,
-                             activation,
-                             normalize_obs)
+        self.critic = Critic(num_obs=num_critic_obs,
+                             hidden_dims=critic_hidden_dims,
+                             activation=activation,
+                             normalize_obs=normalize_obs)
 
         print(f"Actor MLP: {self.actor.mean_NN}")
         print(f"Critic MLP: {self.critic.NN}")

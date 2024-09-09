@@ -51,7 +51,10 @@ class Actor(nn.Module):
         # disable args validation for speedup
         Normal.set_default_validate_args = False
         if custom_initialization:
-            self.apply(weights_init_)
+            torch.nn.init.constant_(self.mean_NN[-1].weight, 0)
+            torch.nn.init.constant_(self.mean_NN[-1].bias, 0)
+            # self.apply(weights_init_) # xavier_uniform initialization
+
 
     @property
     def action_mean(self):
