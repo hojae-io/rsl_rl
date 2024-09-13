@@ -282,3 +282,6 @@ class OnPolicyRunner:
 
     def add_git_repo_to_log(self, repo_file_path):
         self.git_status_repos.append(repo_file_path)
+
+    def export(self, path):
+        self.alg.actor_critic.export_policy(path)
