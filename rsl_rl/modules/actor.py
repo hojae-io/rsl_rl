@@ -125,7 +125,7 @@ class Actor(nn.Module):
                 self.obs_normalizer = obs_normalizer
             def forward(self, obs):
                 obs = self.obs_normalizer(obs)
-                return self.actor(obs)
+                return self.actor(obs).squeeze(0)
         model = NormalizedActor(copy.deepcopy(self.mean_NN), copy.deepcopy(self.obs_normalizer)).to('cpu')
         
         dummy_input = torch.rand(self.mean_NN[0].in_features,)
