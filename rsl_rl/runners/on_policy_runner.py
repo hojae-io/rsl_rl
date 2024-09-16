@@ -90,7 +90,7 @@ class OnPolicyRunner:
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         
         if self.cfg["enable_logging"]:
-            self.save(os.path.join(self.log_dir, f"model_0.pt"))
+            self.save(os.path.join(self.log_dir, f"model_{self.current_learning_iteration}.pt"))
 
         start_iter = self.current_learning_iteration
         tot_iter = start_iter + num_learning_iterations
