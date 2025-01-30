@@ -3,6 +3,7 @@
 
 # builds
 *.egg-info
+build/
 
 # cache
 __pycache__
