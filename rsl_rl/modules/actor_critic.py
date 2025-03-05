@@ -66,5 +66,5 @@ class ActorCritic(nn.Module):
     def evaluate(self, critic_observations, actions=None, **kwargs):
         return self.critic.evaluate(critic_observations, actions)
 
-    def export_policy(self, path):
-        self.actor.export(path)
+    def export_policy(self, path, model_name):
+        self.actor.export(path, model_name)

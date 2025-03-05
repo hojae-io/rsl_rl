@@ -113,10 +113,10 @@ class Actor(nn.Module):
         with torch.no_grad():
             return self.obs_normalizer(observation)
         
-    def export(self, path):
+    def export(self, path, model_name='policy'):
         os.makedirs(path, exist_ok=True)
-        path_TS = os.path.join(path, 'policy.pt') # TorchScript path
-        path_onnx = os.path.join(path, 'policy.onnx') # ONNX path
+        path_TS = os.path.join(path, f'{model_name}.pt') # TorchScript path
+        path_onnx = os.path.join(path, f'{model_name}.onnx') # ONNX path
 
         class NormalizedActor(nn.Module):
             def __init__(self, actor, obs_normalizer):
