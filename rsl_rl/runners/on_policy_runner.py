@@ -26,13 +26,10 @@ class OnPolicyRunner:
         self.policy_cfg = train_cfg["policy"]
         self.device = device
         self.env = env
-        actor_obs, critic_obs = self.env.get_observations()
-        num_actor_obs = actor_obs.shape[1]
-        num_critic_obs = critic_obs.shape[1]
 
         actor_critic_class = eval(self.policy_cfg.pop("class_name"))  # ActorCritic
         actor_critic: ActorCritic = actor_critic_class(
-            num_actor_obs, num_critic_obs, self.env.num_actions, **self.policy_cfg
+            self.env.num_actor_obs, self.env.num_critic_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)
         alg_class = eval(self.alg_cfg.pop("class_name"))  # PPO
         self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
@@ -42,8 +39,8 @@ class OnPolicyRunner:
         # * init storage and model
         self.alg.init_storage(self.env.num_envs,
                               self.num_steps_per_env,
-                              num_actor_obs,
-                              num_critic_obs,
+                              self.env.num_actor_obs,
+                              self.env.num_critic_obs,
                               self.env.num_actions)
 
         # * Log

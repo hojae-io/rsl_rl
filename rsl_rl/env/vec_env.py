@@ -22,11 +22,11 @@ class VecEnv(ABC):
 
     num_envs: int
     """Number of environments."""
-    num_obs: int
-    """Number of observations."""
-    num_privileged_obs: int
-    """Number of privileged observations."""
-    num_actions: int
+    num_actor_obs: int | dict
+    """Number of actor observations."""
+    num_critic_obs: int | dict
+    """Number of critic observations."""
+    num_actions: int | dict
     """Number of actions."""
     max_episode_length: int
     """Maximum episode length."""
