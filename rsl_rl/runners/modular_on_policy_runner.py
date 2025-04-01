@@ -124,12 +124,16 @@ class ModularOnPolicyRunner:
                     leg_actions = self.leg_alg.act(leg_actor_obs, leg_critic_obs)
                     arm_actions = self.arm_alg.act(arm_actor_obs, arm_critic_obs)
                     actions = torch.cat((leg_actions, arm_actions), dim=1)
-                    obs_dict, rewards, dones, infos = self.env.step(actions)
+
+                    obs_dict, rewards, dones, terminated, time_outs, infos = self.env.step(actions)
+
                     leg_actor_obs, leg_critic_obs = obs_dict["leg_actor"], obs_dict["leg_critic"]
                     arm_actor_obs, arm_critic_obs = obs_dict["arm_actor"], obs_dict["arm_critic"]
 
-                    self.leg_alg.process_env_step(rewards, dones, infos["time_outs"])
-                    self.arm_alg.process_env_step(rewards, dones, infos["time_outs"])
+                    # self.leg_alg.process_env_step(rewards, dones, time_outs | terminated["arm"])
+                    # self.arm_alg.process_env_step(rewards, dones, time_outs | terminated["leg"]) # TODO: This seems worse
+                    self.leg_alg.process_env_step(rewards, dones, time_outs)
+                    self.arm_alg.process_env_step(rewards, dones, time_outs)
 
                     if self.log_dir is not None:
                         # * Book keeping

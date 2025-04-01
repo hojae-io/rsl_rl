@@ -97,11 +97,11 @@ class OnPolicyRunner:
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                     actions = self.alg.act(actor_obs, critic_obs)
-                    obs_dict, rewards, dones, infos = self.env.step(actions)
+                    obs_dict, rewards, dones, time_outs, infos = self.env.step(actions)
                     actor_obs = obs_dict["actor"]
                     critic_obs = obs_dict["critic"]
 
-                    self.alg.process_env_step(rewards, dones, infos["time_outs"])
+                    self.alg.process_env_step(rewards, dones, time_outs)
 
                     if self.log_dir is not None:
                         # * Book keeping
