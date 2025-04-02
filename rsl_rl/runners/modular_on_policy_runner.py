@@ -106,9 +106,10 @@ class ModularOnPolicyRunner:
         self.train_mode()  # switch to train mode (for dropout for example)
 
         ep_infos = []
-        rewbuffer = deque(maxlen=100)
+        rewbuffer = {"leg": deque(maxlen=100), "arm": deque(maxlen=100)}
         lenbuffer = deque(maxlen=100)
-        cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
+        cur_reward_sum = {"leg": torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device),
+                          "arm": torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)}
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         
         if self.cfg["enable_logging"]:
@@ -132,8 +133,16 @@ class ModularOnPolicyRunner:
 
                     # self.leg_alg.process_env_step(rewards, dones, time_outs | terminated["arm"])
                     # self.arm_alg.process_env_step(rewards, dones, time_outs | terminated["leg"]) # TODO: This seems worse
-                    self.leg_alg.process_env_step(rewards, dones, time_outs)
-                    self.arm_alg.process_env_step(rewards, dones, time_outs)
+
+                    # self.leg_alg.process_env_step(rewards, dones, time_outs)
+                    # self.arm_alg.process_env_step(rewards, dones, time_outs)
+
+                    leg_dones = dones.clone()
+                    leg_dones[terminated["arm"]] = 0.0
+                    arm_dones = dones.clone()
+                    arm_dones[terminated["leg"]] = 0.0
+                    self.leg_alg.process_env_step(rewards["leg"], leg_dones, time_outs)
+                    self.arm_alg.process_env_step(rewards["arm"], arm_dones, time_outs)
 
                     if self.log_dir is not None:
                         # * Book keeping
@@ -141,12 +150,15 @@ class ModularOnPolicyRunner:
                             ep_infos.append(infos["episode"])
                         elif "log" in infos:
                             ep_infos.append(infos["log"])
-                        cur_reward_sum += rewards
+                        cur_reward_sum["leg"] += rewards["leg"]
+                        cur_reward_sum["arm"] += rewards["arm"]
                         cur_episode_length += 1
                         new_ids = (dones > 0).nonzero(as_tuple=False)
-                        rewbuffer.extend(cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
+                        rewbuffer["leg"].extend(cur_reward_sum["leg"][new_ids][:, 0].cpu().numpy().tolist())
+                        rewbuffer["arm"].extend(cur_reward_sum["arm"][new_ids][:, 0].cpu().numpy().tolist())
                         lenbuffer.extend(cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
-                        cur_reward_sum[new_ids] = 0
+                        cur_reward_sum["leg"][new_ids] = 0
+                        cur_reward_sum["arm"][new_ids] = 0
                         cur_episode_length[new_ids] = 0
 
                 stop = time.time()
@@ -210,18 +222,22 @@ class ModularOnPolicyRunner:
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs["collection_time"] + locs["learn_time"]))
 
         if self.cfg["enable_logging"]:
-            self.writer.add_scalar("Loss/value_function", locs["leg_mean_value_loss"], locs["it"])
-            self.writer.add_scalar("Loss/surrogate", locs["leg_mean_surrogate_loss"], locs["it"])
+            self.writer.add_scalar("Loss/leg/value_function", locs["leg_mean_value_loss"], locs["it"])
+            self.writer.add_scalar("Loss/leg/surrogate", locs["leg_mean_surrogate_loss"], locs["it"])
+            self.writer.add_scalar("Loss/arm/value_function", locs["arm_mean_value_loss"], locs["it"])
+            self.writer.add_scalar("Loss/arm/surrogate", locs["arm_mean_surrogate_loss"], locs["it"])
             self.writer.add_scalar("Loss/learning_rate", self.leg_alg.learning_rate, locs["it"])
             self.writer.add_scalar("Policy/mean_noise_std", mean_std.item(), locs["it"])
             self.writer.add_scalar("Perf/total_fps", fps, locs["it"])
             self.writer.add_scalar("Perf/collection time", locs["collection_time"], locs["it"])
             self.writer.add_scalar("Perf/learning_time", locs["learn_time"], locs["it"])
-            if len(locs["rewbuffer"]) > 0:
-                self.writer.add_scalar("Train/mean_reward", statistics.mean(locs["rewbuffer"]), locs["it"])
+            if len(locs["rewbuffer"]["leg"]) > 0:
+                self.writer.add_scalar("Train/mean_reward/leg", statistics.mean(locs["rewbuffer"]["leg"]), locs["it"])
+                self.writer.add_scalar("Train/mean_reward/arm", statistics.mean(locs["rewbuffer"]["arm"]), locs["it"])
                 self.writer.add_scalar("Train/mean_episode_length", statistics.mean(locs["lenbuffer"]), locs["it"])
                 if self.logger_type != "wandb":  # wandb does not support non-integer x-axis logging
-                    self.writer.add_scalar("Train/mean_reward/time", statistics.mean(locs["rewbuffer"]), self.tot_time)
+                    self.writer.add_scalar("Train/mean_reward/leg/time", statistics.mean(locs["rewbuffer"]["leg"]), self.tot_time)
+                    self.writer.add_scalar("Train/mean_reward/arm/time", statistics.mean(locs["rewbuffer"]["arm"]), self.tot_time)
                     self.writer.add_scalar(
                         "Train/mean_episode_length/time", statistics.mean(locs["lenbuffer"]), self.tot_time
                     )
@@ -232,16 +248,19 @@ class ModularOnPolicyRunner:
 
         str = f" \033[1m Learning iteration {locs['it']}/{locs['tot_iter']} \033[0m "
 
-        if len(locs["rewbuffer"]) > 0:
+        if len(locs["rewbuffer"]["leg"]) > 0:
             log_string = (
                 f"""{'#' * width}\n"""
                 f"""{str.center(width, ' ')}\n\n"""
                 f"""{'Computation:':>{pad}} {fps:.0f} steps/s (collection: {locs[
                             'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
-                f"""{'Value function loss:':>{pad}} {locs['leg_mean_value_loss']:.4f}\n"""
-                f"""{'Surrogate loss:':>{pad}} {locs['leg_mean_surrogate_loss']:.4f}\n"""
+                f"""{'Value function loss/leg:':>{pad}} {locs['leg_mean_value_loss']:.4f}\n"""
+                f"""{'Surrogate loss/leg:':>{pad}} {locs['leg_mean_surrogate_loss']:.4f}\n"""
+                f"""{'Value function loss/arm:':>{pad}} {locs['arm_mean_value_loss']:.4f}\n"""
+                f"""{'Surrogate loss/arm:':>{pad}} {locs['arm_mean_surrogate_loss']:.4f}\n"""
                 f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
-                f"""{'Mean reward:':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
+                f"""{'Mean reward/leg:':>{pad}} {statistics.mean(locs['rewbuffer']["leg"]):.2f}\n"""
+                f"""{'Mean reward/arm:':>{pad}} {statistics.mean(locs['rewbuffer']["arm"]):.2f}\n"""
                 f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n"""
             )
             #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
@@ -252,8 +271,10 @@ class ModularOnPolicyRunner:
                 f"""{str.center(width, ' ')}\n\n"""
                 f"""{'Computation:':>{pad}} {fps:.0f} steps/s (collection: {locs[
                             'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
-                f"""{'Value function loss:':>{pad}} {locs['leg_mean_value_loss']:.4f}\n"""
-                f"""{'Surrogate loss:':>{pad}} {locs['leg_mean_surrogate_loss']:.4f}\n"""
+                f"""{'Value function loss/leg:':>{pad}} {locs['leg_mean_value_loss']:.4f}\n"""
+                f"""{'Surrogate loss/leg:':>{pad}} {locs['leg_mean_surrogate_loss']:.4f}\n"""
+                f"""{'Value function loss/arm:':>{pad}} {locs['arm_mean_value_loss']:.4f}\n"""
+                f"""{'Surrogate loss/arm:':>{pad}} {locs['arm_mean_surrogate_loss']:.4f}\n"""
                 f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
             )
             #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
