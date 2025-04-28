@@ -347,3 +347,7 @@ class ModularOnPolicyRunner:
     def export(self, path, model_name):
         self.leg_alg.actor_critic.export_policy(path, model_name + "_leg")
         self.arm_alg.actor_critic.export_policy(path, model_name + "_arm")
+
+    def close(self):
+        if self.writer is not None:
+            self.writer.stop()

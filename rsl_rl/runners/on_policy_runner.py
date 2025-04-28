@@ -282,3 +282,7 @@ class OnPolicyRunner:
 
     def export(self, path, model_name):
         self.alg.actor_critic.export_policy(path, model_name)
+
+    def close(self):
+        if self.writer is not None:
+            self.writer.stop()
