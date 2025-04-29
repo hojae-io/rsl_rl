@@ -307,7 +307,7 @@ class ModularOnPolicyRunner:
         if self.logger_type in ["neptune", "wandb"]:
             self.writer.save_model(path, self.current_learning_iteration)
 
-    def load(self, path, load_optimizer=True):
+    def load(self, path, load_modular: bool = True, load_optimizer: bool = True):
         try:
             loaded_dict = torch.load(path)
         except:
@@ -316,12 +316,19 @@ class ModularOnPolicyRunner:
             sys.modules['learning.storage'] = sys.modules['rsl_rl.storage']
             loaded_dict = torch.load(path)
 
-        self.leg_alg.actor_critic.load_state_dict(loaded_dict["leg_model_state_dict"])
-        self.arm_alg.actor_critic.load_state_dict(loaded_dict["arm_model_state_dict"])
-        if load_optimizer:
-            self.leg_alg.optimizer.load_state_dict(loaded_dict["leg_optimizer_state_dict"])
-            self.arm_alg.optimizer.load_state_dict(loaded_dict["arm_optimizer_state_dict"])
-        self.current_learning_iteration = loaded_dict["iter"]
+        if load_modular:
+            self.leg_alg.actor_critic.load_state_dict(loaded_dict["leg_model_state_dict"])
+            self.arm_alg.actor_critic.load_state_dict(loaded_dict["arm_model_state_dict"])
+            if load_optimizer:
+                self.leg_alg.optimizer.load_state_dict(loaded_dict["leg_optimizer_state_dict"])
+                self.arm_alg.optimizer.load_state_dict(loaded_dict["arm_optimizer_state_dict"])
+            self.current_learning_iteration = loaded_dict["iter"]
+        else:
+            self.leg_alg.actor_critic.load_state_dict(loaded_dict["model_state_dict"])
+            if load_optimizer:
+                self.leg_alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
+            self.current_learning_iteration = loaded_dict["iter"]
+
         return loaded_dict["infos"]
 
     def get_inference_policy(self, device=None):
