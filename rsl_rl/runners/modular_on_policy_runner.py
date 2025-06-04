@@ -9,6 +9,8 @@ import time
 import torch
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter as TensorboardSummaryWriter
+import pickle
+from collections import defaultdict
 
 import rsl_rl
 from rsl_rl.algorithms import PPO
@@ -63,6 +65,7 @@ class ModularOnPolicyRunner:
 
         # * Log
         self.log_dir = log_dir
+        self.log_buffer: dict[str, list] = defaultdict(list)
         self.writer = None
         self.tot_timesteps = 0
         self.tot_time = 0
@@ -137,12 +140,12 @@ class ModularOnPolicyRunner:
                     # self.leg_alg.process_env_step(rewards, dones, time_outs)
                     # self.arm_alg.process_env_step(rewards, dones, time_outs)
 
-                    leg_dones = dones.clone()
-                    leg_dones[terminated["arm"]] = 0.0
-                    arm_dones = dones.clone()
-                    arm_dones[terminated["leg"]] = 0.0
-                    self.leg_alg.process_env_step(rewards["leg"], leg_dones, time_outs)
-                    self.arm_alg.process_env_step(rewards["arm"], arm_dones, time_outs)
+                    # leg_dones = dones.clone()
+                    # leg_dones[terminated["arm"]] = 0.0
+                    # arm_dones = dones.clone()
+                    # arm_dones[terminated["leg"]] = 0.0
+                    self.leg_alg.process_env_step(rewards["leg"], dones, time_outs)
+                    self.arm_alg.process_env_step(rewards["arm"], dones, time_outs)
 
                     if self.log_dir is not None:
                         # * Book keeping
@@ -213,6 +216,7 @@ class ModularOnPolicyRunner:
                 if "/" in key:
                     if self.cfg["enable_logging"]:
                         self.writer.add_scalar(key, value, locs["it"])
+                        self.log_buffer[key].append(value.item())
                     ep_string += f"""{f'{key}:':>{pad}} {value:.4f}\n"""
                 else:
                     if self.cfg["enable_logging"]:
@@ -228,6 +232,8 @@ class ModularOnPolicyRunner:
             self.writer.add_scalar("Loss/arm/surrogate", locs["arm_mean_surrogate_loss"], locs["it"])
             self.writer.add_scalar("Loss/learning_rate", self.leg_alg.learning_rate, locs["it"])
             self.writer.add_scalar("Policy/mean_noise_std", mean_std.item(), locs["it"])
+            self.writer.add_scalar("Policy/leg/advantage_variance", self.leg_alg.storage.raw_advantages.var(), locs["it"])
+            self.writer.add_scalar("Policy/arm/advantage_variance", self.arm_alg.storage.raw_advantages.var(), locs["it"])
             self.writer.add_scalar("Perf/total_fps", fps, locs["it"])
             self.writer.add_scalar("Perf/collection time", locs["collection_time"], locs["it"])
             self.writer.add_scalar("Perf/learning_time", locs["learn_time"], locs["it"])
@@ -241,6 +247,11 @@ class ModularOnPolicyRunner:
                     self.writer.add_scalar(
                         "Train/mean_episode_length/time", statistics.mean(locs["lenbuffer"]), self.tot_time
                     )
+
+            self.log_buffer["Policy/leg/advantage_variance"].append(self.leg_alg.storage.raw_advantages.var().item())
+            self.log_buffer["Policy/arm/advantage_variance"].append(self.arm_alg.storage.raw_advantages.var().item())
+            self.log_buffer["Train/mean_reward/leg"].append(statistics.mean(locs["rewbuffer"]["leg"]))
+            self.log_buffer["Train/mean_reward/arm"].append(statistics.mean(locs["rewbuffer"]["arm"]))
 
         # Video recording for wandb
         if self.cfg["enable_logging"] and self.logger_type == "wandb":
@@ -307,7 +318,11 @@ class ModularOnPolicyRunner:
         if self.logger_type in ["neptune", "wandb"]:
             self.writer.save_model(path, self.current_learning_iteration)
 
-    def load(self, path, load_modular: bool = True, load_optimizer: bool = True):
+        filepath = os.path.join(self.log_dir, f"{self.cfg['experiment_name']}_seed_{self.cfg['seed']}_log_buffer.pkl")
+        with open(filepath, 'wb') as f:
+            pickle.dump(dict(self.log_buffer), f)
+
+    def load(self, path, load_modular: bool = True, load_optimizer: bool = True, only_leg: bool = False):
         try:
             loaded_dict = torch.load(path)
         except:
@@ -317,12 +332,18 @@ class ModularOnPolicyRunner:
             loaded_dict = torch.load(path)
 
         if load_modular:
-            self.leg_alg.actor_critic.load_state_dict(loaded_dict["leg_model_state_dict"])
-            self.arm_alg.actor_critic.load_state_dict(loaded_dict["arm_model_state_dict"])
-            if load_optimizer:
-                self.leg_alg.optimizer.load_state_dict(loaded_dict["leg_optimizer_state_dict"])
-                self.arm_alg.optimizer.load_state_dict(loaded_dict["arm_optimizer_state_dict"])
-            self.current_learning_iteration = loaded_dict["iter"]
+            if only_leg:
+                self.leg_alg.actor_critic.load_state_dict(loaded_dict["leg_model_state_dict"])
+                if load_optimizer:
+                    self.leg_alg.optimizer.load_state_dict(loaded_dict["leg_optimizer_state_dict"])
+                self.current_learning_iteration = loaded_dict["iter"]
+            else:
+                self.leg_alg.actor_critic.load_state_dict(loaded_dict["leg_model_state_dict"])
+                self.arm_alg.actor_critic.load_state_dict(loaded_dict["arm_model_state_dict"])
+                if load_optimizer:
+                    self.leg_alg.optimizer.load_state_dict(loaded_dict["leg_optimizer_state_dict"])
+                    self.arm_alg.optimizer.load_state_dict(loaded_dict["arm_optimizer_state_dict"])
+                self.current_learning_iteration = loaded_dict["iter"]
         else:
             self.leg_alg.actor_critic.load_state_dict(loaded_dict["model_state_dict"])
             if load_optimizer:

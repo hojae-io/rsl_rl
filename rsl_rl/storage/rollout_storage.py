@@ -73,6 +73,7 @@ class RolloutStorage(BaseStorage):
         self.values = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.returns = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.advantages = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
+        self.raw_advantages = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.mu = torch.zeros(num_transitions_per_env, num_envs, num_actions, device=self.device)
         self.sigma = torch.zeros(num_transitions_per_env, num_envs, num_actions, device=self.device)
 
@@ -113,6 +114,7 @@ class RolloutStorage(BaseStorage):
 
         # Compute and normalize the advantages
         self.advantages = self.returns - self.values
+        self.raw_advantages = self.advantages.clone()
         self.advantages = (self.advantages - self.advantages.mean()) / (self.advantages.std() + 1e-8)
 
     def get_statistics(self):

@@ -9,6 +9,8 @@ import time
 import torch
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter as TensorboardSummaryWriter
+import pickle
+from collections import defaultdict
 
 import rsl_rl
 from rsl_rl.algorithms import PPO
@@ -45,6 +47,7 @@ class OnPolicyRunner:
 
         # * Log
         self.log_dir = log_dir
+        self.log_buffer: dict[str, list] = defaultdict(list)
         self.writer = None
         self.tot_timesteps = 0
         self.tot_time = 0
@@ -166,6 +169,7 @@ class OnPolicyRunner:
                 if "/" in key:
                     if self.cfg["enable_logging"]:
                         self.writer.add_scalar(key, value, locs["it"])
+                        self.log_buffer[key].append(value.item())
                     ep_string += f"""{f'{key}:':>{pad}} {value:.4f}\n"""
                 else:
                     if self.cfg["enable_logging"]:
@@ -179,6 +183,7 @@ class OnPolicyRunner:
             self.writer.add_scalar("Loss/surrogate", locs["mean_surrogate_loss"], locs["it"])
             self.writer.add_scalar("Loss/learning_rate", self.alg.learning_rate, locs["it"])
             self.writer.add_scalar("Policy/mean_noise_std", mean_std.item(), locs["it"])
+            self.writer.add_scalar("Policy/advantage_variance", self.alg.storage.raw_advantages.var(), locs["it"])
             self.writer.add_scalar("Perf/total_fps", fps, locs["it"])
             self.writer.add_scalar("Perf/collection time", locs["collection_time"], locs["it"])
             self.writer.add_scalar("Perf/learning_time", locs["learn_time"], locs["it"])
@@ -190,6 +195,9 @@ class OnPolicyRunner:
                     self.writer.add_scalar(
                         "Train/mean_episode_length/time", statistics.mean(locs["lenbuffer"]), self.tot_time
                     )
+
+            self.log_buffer["Policy/advantage_variance"].append(self.alg.storage.raw_advantages.var().item())
+            self.log_buffer["Train/mean_reward"].append(statistics.mean(locs["rewbuffer"]))
 
         # Video recording for wandb
         if self.cfg["enable_logging"] and self.logger_type == "wandb":
@@ -248,6 +256,10 @@ class OnPolicyRunner:
         # Upload model to external logging service
         if self.logger_type in ["neptune", "wandb"]:
             self.writer.save_model(path, self.current_learning_iteration)
+
+        filepath = os.path.join(self.log_dir, f"{self.cfg['experiment_name']}_seed_{self.cfg['seed']}_log_buffer.pkl")
+        with open(filepath, 'wb') as f:
+            pickle.dump(dict(self.log_buffer), f)
 
     def load(self, path, load_optimizer=True):
         try:
