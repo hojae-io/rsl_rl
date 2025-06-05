@@ -11,6 +11,7 @@ from collections import deque
 from torch.utils.tensorboard import SummaryWriter as TensorboardSummaryWriter
 import pickle
 from collections import defaultdict
+from pathlib import Path
 
 import rsl_rl
 from rsl_rl.algorithms import PPO
@@ -257,8 +258,18 @@ class OnPolicyRunner:
         if self.logger_type in ["neptune", "wandb"]:
             self.writer.save_model(path, self.current_learning_iteration)
 
-        filepath = os.path.join(self.log_dir, f"{self.cfg['experiment_name']}_seed_{self.cfg['seed']}_log_buffer.pkl")
-        with open(filepath, 'wb') as f:
+        exp_name = self.cfg["experiment_name"]
+        seed     = self.cfg["seed"]
+        filename = f"{exp_name}_seed_{seed}_log_buffer.pkl"
+        log_dir_path = Path(self.log_dir) / filename
+        data_dir_path = Path.cwd() / "scripts" / "plotting" / "data" / exp_name / filename
+
+        # 1. Primary location inside self.log_dir
+        with log_dir_path.open("wb") as f:
+            pickle.dump(dict(self.log_buffer), f)
+
+        # 2. Mirror copy inside scripts/plotting/data/<experiment_name>/
+        with data_dir_path.open("wb") as f:
             pickle.dump(dict(self.log_buffer), f)
 
     def load(self, path, load_optimizer=True):
