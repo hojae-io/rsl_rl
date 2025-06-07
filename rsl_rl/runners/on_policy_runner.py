@@ -81,7 +81,8 @@ class OnPolicyRunner:
             self.env.episode_length_buf = torch.randint_like(
                 self.env.episode_length_buf, high=int(self.env.max_episode_length)
             )
-        actor_obs, critic_obs = self.env.get_observations()
+        obs_dict = self.env.get_observations()
+        actor_obs, critic_obs = obs_dict["actor"], obs_dict["critic"]
         self.train_mode()  # switch to train mode (for dropout for example)
 
         ep_infos = []

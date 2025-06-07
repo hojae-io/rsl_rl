@@ -54,11 +54,11 @@ class VecEnv(ABC):
     """
 
     @abstractmethod
-    def get_observations(self) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_observations(self) -> dict[str, torch.Tensor]:
         """Return the current observations.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]: Tuple containing the observations.
+            dict[str, torch.Tensor]: Dictionary containing the observations for the actor and critic networks.
         """
         raise NotImplementedError
 
