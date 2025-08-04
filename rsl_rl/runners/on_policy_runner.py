@@ -269,9 +269,9 @@ class OnPolicyRunner:
         with log_dir_path.open("wb") as f:
             pickle.dump(dict(self.log_buffer), f)
 
-        # 2. Mirror copy inside scripts/plotting/data/<experiment_name>/
-        with data_dir_path.open("wb") as f:
-            pickle.dump(dict(self.log_buffer), f)
+        # # 2. Mirror copy inside scripts/plotting/data/<experiment_name>/
+        # with data_dir_path.open("wb") as f:
+        #     pickle.dump(dict(self.log_buffer), f)
 
     def load(self, path, load_optimizer=True):
         try:
