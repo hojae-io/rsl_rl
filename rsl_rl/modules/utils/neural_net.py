@@ -37,6 +37,8 @@ def get_activation(act_name):
         return nn.SELU()
     elif act_name == "relu":
         return nn.ReLU()
+    elif act_name == "gelu":
+        return nn.GELU()
     elif act_name == "crelu":
         return nn.ReLU()
     elif act_name == "lrelu":
@@ -45,6 +47,8 @@ def get_activation(act_name):
         return nn.Tanh()
     elif act_name == "sigmoid":
         return nn.Sigmoid()
+    elif act_name == "silu":
+        return nn.SiLU()
     else:
         print("invalid activation function!")
         return None
