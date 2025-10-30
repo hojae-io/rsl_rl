@@ -13,7 +13,7 @@ class Actor(nn.Module):
                  num_actions,
                  hidden_dims,
                  activation="elu",
-                 init_noise_std=1.0,
+                 init_noise_std: float | list[float] = 1.0,
                  normalize_obs=False,
                  log_std_bounds=None,
                  actions_limits=None,
@@ -39,7 +39,7 @@ class Actor(nn.Module):
             self.log_std_min, self.log_std_max = log_std_bounds
             self.log_std_NN = create_MLP(num_obs, num_actions, hidden_dims, activation)
         else:
-            self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
+            self.std = nn.Parameter(torch.tensor(init_noise_std) * torch.ones(num_actions))
 
         self.distribution = None
 

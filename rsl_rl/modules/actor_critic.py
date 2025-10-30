@@ -10,7 +10,7 @@ class ActorCritic(nn.Module):
                        actor_hidden_dims=[256, 256, 256],
                        critic_hidden_dims=[256, 256, 256],
                        activation="elu",
-                       init_noise_std=1.0,
+                       init_noise_std: float | list[float] = 1.0,
                        normalize_obs=False,
                        custom_initialization=False,
                        **kwargs):
