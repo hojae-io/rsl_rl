@@ -25,10 +25,10 @@ class ModularOnPolicyRunner:
 
     def __init__(self, env: VecEnv, train_cfg, log_dir=None, device="cpu"):
         self.cfg = train_cfg
-        self.leg_alg_cfg = train_cfg["leg_algorithm"]
-        self.leg_policy_cfg = train_cfg["leg_policy"]
-        self.arm_alg_cfg = train_cfg["arm_algorithm"]
-        self.arm_policy_cfg = train_cfg["arm_policy"]
+        self.leg_alg_cfg = train_cfg["algorithms"]["leg"]
+        self.leg_policy_cfg = train_cfg["policies"]["leg"]
+        self.arm_alg_cfg = train_cfg["algorithms"]["arm"]
+        self.arm_policy_cfg = train_cfg["policies"]["arm"]
         self.device = device
         self.env = env
 
