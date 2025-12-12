@@ -35,7 +35,10 @@ class ModularOnPolicyRunner:
         print("\n--------------- Create leg actor critic ---------------")
         leg_actor_critic_class = eval(self.leg_policy_cfg.pop("class_name"))  # ActorCritic
         leg_actor_critic: ActorCritic = leg_actor_critic_class(
-            self.env.num_actor_obs["leg"], self.env.num_critic_obs["leg"], self.env.num_actions["leg"], **self.leg_policy_cfg
+            self.env.num_actor_obs["leg_actor"], 
+            self.env.num_critic_obs["leg_critic"], 
+            self.env.num_actions["leg_joint_pos"], 
+            **self.leg_policy_cfg
         ).to(self.device)
         leg_alg_class = eval(self.leg_alg_cfg.pop("class_name"))  # PPO
         self.leg_alg: PPO = leg_alg_class(leg_actor_critic, device=self.device, **self.leg_alg_cfg)
@@ -43,7 +46,10 @@ class ModularOnPolicyRunner:
         print("\n--------------- Create arm actor critic ---------------")
         arm_actor_critic_class = eval(self.arm_policy_cfg.pop("class_name"))  # ActorCritic
         arm_actor_critic: ActorCritic = arm_actor_critic_class(
-            self.env.num_actor_obs["arm"], self.env.num_critic_obs["arm"], self.env.num_actions["arm"], **self.arm_policy_cfg
+            self.env.num_actor_obs["arm_actor"], 
+            self.env.num_critic_obs["arm_critic"], 
+            self.env.num_actions["arm_joint_pos"], 
+            **self.arm_policy_cfg
         ).to(self.device)
         arm_alg_class = eval(self.arm_alg_cfg.pop("class_name"))  # PPO
         self.arm_alg: PPO = arm_alg_class(arm_actor_critic, device=self.device, **self.arm_alg_cfg)
@@ -54,15 +60,15 @@ class ModularOnPolicyRunner:
         # * init storage and model
         self.leg_alg.init_storage(self.env.num_envs,
                                   self.num_steps_per_env,
-                                  self.env.num_actor_obs["leg"],
-                                  self.env.num_critic_obs["leg"],
-                                  self.env.num_actions["leg"])
+                                  self.env.num_actor_obs["leg_actor"],
+                                  self.env.num_critic_obs["leg_critic"],
+                                  self.env.num_actions["leg_joint_pos"])
         
         self.arm_alg.init_storage(self.env.num_envs,
                                   self.num_steps_per_env,
-                                  self.env.num_actor_obs["arm"],
-                                  self.env.num_critic_obs["arm"],
-                                  self.env.num_actions["arm"])
+                                  self.env.num_actor_obs["arm_actor"],
+                                  self.env.num_critic_obs["arm_critic"],
+                                  self.env.num_actions["arm_joint_pos"])
 
         # * Log
         self.log_dir = log_dir
