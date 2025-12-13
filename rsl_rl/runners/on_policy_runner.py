@@ -19,16 +19,15 @@ from rsl_rl.env import VecEnv
 from rsl_rl.modules import ActorCritic
 from rsl_rl.utils import store_code_state
 
+from .policy_runner import PolicyRunner
 
-class OnPolicyRunner:
+class OnPolicyRunner(PolicyRunner):
     """On-policy runner for training and evaluation."""
 
     def __init__(self, env: VecEnv, train_cfg, log_dir=None, device="cpu"):
-        self.cfg = train_cfg
+        super().__init__(env, train_cfg, log_dir, device)
         self.alg_cfg = train_cfg["algorithm"]
         self.policy_cfg = train_cfg["policy"]
-        self.device = device
-        self.env = env
 
         actor_critic_class = eval(self.policy_cfg.pop("class_name"))  # ActorCritic
         actor_critic: ActorCritic = actor_critic_class(
@@ -36,8 +35,6 @@ class OnPolicyRunner:
         ).to(self.device)
         alg_class = eval(self.alg_cfg.pop("class_name"))  # PPO
         self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
-        self.num_steps_per_env = self.cfg["num_steps_per_env"]
-        self.save_interval = self.cfg["save_interval"]
 
         # * init storage and model
         self.alg.init_storage(self.env.num_envs,
@@ -45,15 +42,6 @@ class OnPolicyRunner:
                               self.env.num_actor_obs,
                               self.env.num_critic_obs,
                               self.env.num_actions)
-
-        # * Log
-        self.log_dir = log_dir
-        self.log_buffer: dict[str, list] = defaultdict(list)
-        self.writer = None
-        self.tot_timesteps = 0
-        self.tot_time = 0
-        self.current_learning_iteration = 0
-        self.git_status_repos = [rsl_rl.__file__]
 
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):
         # * initialize writer
@@ -313,12 +301,5 @@ class OnPolicyRunner:
     def eval_mode(self):
         self.alg.actor_critic.eval()
 
-    def add_git_repo_to_log(self, repo_file_path):
-        self.git_status_repos.append(repo_file_path)
-
     def export(self, path, model_name):
         self.alg.actor_critic.export_policy(path, model_name)
-
-    def close(self):
-        if self.writer is not None:
-            self.writer.stop()

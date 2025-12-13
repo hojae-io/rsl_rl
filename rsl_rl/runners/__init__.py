@@ -3,8 +3,9 @@
 
 """Implementation of runners for environment-agent interaction."""
 
+from .policy_runner import PolicyRunner
 from .on_policy_runner import OnPolicyRunner
 from .modular_on_policy_runner import ModularOnPolicyRunner
 
 
-__all__ = ["OnPolicyRunner", "ModularOnPolicyRunner"]
+__all__ = ["PolicyRunner", "OnPolicyRunner", "ModularOnPolicyRunner"]

@@ -19,18 +19,17 @@ from rsl_rl.env import VecEnv
 from rsl_rl.modules import ActorCritic
 from rsl_rl.utils import store_code_state
 
+from .policy_runner import PolicyRunner
 
-class ModularOnPolicyRunner:
+class ModularOnPolicyRunner(PolicyRunner):
     """Modular On-policy runner for training and evaluation."""
 
     def __init__(self, env: VecEnv, train_cfg, log_dir=None, device="cpu"):
-        self.cfg = train_cfg
+        super().__init__(env, train_cfg, log_dir, device)
         self.leg_alg_cfg = train_cfg["algorithms"]["leg"]
         self.leg_policy_cfg = train_cfg["policies"]["leg"]
         self.arm_alg_cfg = train_cfg["algorithms"]["arm"]
         self.arm_policy_cfg = train_cfg["policies"]["arm"]
-        self.device = device
-        self.env = env
 
         print("\n--------------- Create leg actor critic ---------------")
         leg_actor_critic_class = eval(self.leg_policy_cfg.pop("class_name"))  # ActorCritic
@@ -54,9 +53,6 @@ class ModularOnPolicyRunner:
         arm_alg_class = eval(self.arm_alg_cfg.pop("class_name"))  # PPO
         self.arm_alg: PPO = arm_alg_class(arm_actor_critic, device=self.device, **self.arm_alg_cfg)
 
-        self.num_steps_per_env = self.cfg["num_steps_per_env"]
-        self.save_interval = self.cfg["save_interval"]
-
         # * init storage and model
         self.leg_alg.init_storage(self.env.num_envs,
                                   self.num_steps_per_env,
@@ -69,15 +65,6 @@ class ModularOnPolicyRunner:
                                   self.env.num_actor_obs["arm_actor"],
                                   self.env.num_critic_obs["arm_critic"],
                                   self.env.num_actions["arm_joint_pos"])
-
-        # * Log
-        self.log_dir = log_dir
-        self.log_buffer: dict[str, list] = defaultdict(list)
-        self.writer = None
-        self.tot_timesteps = 0
-        self.tot_time = 0
-        self.current_learning_iteration = 0
-        self.git_status_repos = [rsl_rl.__file__]
 
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):
         # * initialize writer
@@ -374,9 +361,17 @@ class ModularOnPolicyRunner:
         if device is not None:
             self.leg_alg.actor_critic.to(device)
             self.arm_alg.actor_critic.to(device)
-        leg_policy = self.leg_alg.actor_critic.act_inference
-        arm_policy = self.arm_alg.actor_critic.act_inference
-        return leg_policy, arm_policy
+        leg_actor_inference = self.leg_alg.actor_critic.act_inference
+        arm_actor_inference = self.arm_alg.actor_critic.act_inference
+
+        def policy(obs_dict: dict[str, torch.Tensor]) -> torch.Tensor:
+            leg_actor_obs, arm_actor_obs = obs_dict["leg_actor"], obs_dict["arm_actor"]
+            leg_actions = leg_actor_inference(leg_actor_obs)
+            arm_actions = arm_actor_inference(arm_actor_obs)
+            actions = torch.cat((leg_actions, arm_actions), dim=1)
+            return actions
+
+        return policy
 
     def train_mode(self):
         self.leg_alg.actor_critic.train()
@@ -386,13 +381,6 @@ class ModularOnPolicyRunner:
         self.leg_alg.actor_critic.eval()
         self.arm_alg.actor_critic.eval()
 
-    def add_git_repo_to_log(self, repo_file_path):
-        self.git_status_repos.append(repo_file_path)
-
     def export(self, path, model_name):
         self.leg_alg.actor_critic.export_policy(path, model_name + "_leg")
         self.arm_alg.actor_critic.export_policy(path, model_name + "_arm")
-
-    def close(self):
-        if self.writer is not None:
-            self.writer.stop()
