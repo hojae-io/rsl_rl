@@ -300,7 +300,11 @@ class OnPolicyRunner:
         self.eval_mode()  # switch to evaluation mode (dropout for example)
         if device is not None:
             self.alg.actor_critic.to(device)
-        policy = self.alg.actor_critic.act_inference
+        actor_inference = self.alg.actor_critic.act_inference
+
+        def policy(obs_dict: dict[str, torch.Tensor]) -> torch.Tensor:
+            return actor_inference(obs_dict["actor"])
+
         return policy
 
     def train_mode(self):
