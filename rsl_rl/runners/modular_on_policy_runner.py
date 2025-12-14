@@ -216,7 +216,8 @@ class ModularOnPolicyRunner(PolicyRunner):
                     if self.cfg["enable_logging"]:
                         self.writer.add_scalar("Episode/" + key, value, locs["it"])
                     ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
-        mean_std = self.leg_alg.actor_critic.std.mean()
+        leg_mean_std = self.leg_alg.actor_critic.std.mean()
+        arm_mean_std = self.arm_alg.actor_critic.std.mean()
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs["collection_time"] + locs["learn_time"]))
 
         if self.cfg["enable_logging"]:
@@ -225,7 +226,8 @@ class ModularOnPolicyRunner(PolicyRunner):
             self.writer.add_scalar("Loss/arm/value_function", locs["arm_mean_value_loss"], locs["it"])
             self.writer.add_scalar("Loss/arm/surrogate", locs["arm_mean_surrogate_loss"], locs["it"])
             self.writer.add_scalar("Loss/learning_rate", self.leg_alg.learning_rate, locs["it"])
-            self.writer.add_scalar("Policy/mean_noise_std", mean_std.item(), locs["it"])
+            self.writer.add_scalar("Policy/leg/mean_noise_std", leg_mean_std.item(), locs["it"])
+            self.writer.add_scalar("Policy/arm/mean_noise_std", arm_mean_std.item(), locs["it"])
             self.writer.add_scalar("Policy/leg/advantage_variance", self.leg_alg.storage.raw_advantages.var(), locs["it"])
             self.writer.add_scalar("Policy/arm/advantage_variance", self.arm_alg.storage.raw_advantages.var(), locs["it"])
             self.writer.add_scalar("Perf/total_fps", fps, locs["it"])
@@ -263,7 +265,8 @@ class ModularOnPolicyRunner(PolicyRunner):
                 f"""{'Surrogate loss/leg:':>{pad}} {locs['leg_mean_surrogate_loss']:.4f}\n"""
                 f"""{'Value function loss/arm:':>{pad}} {locs['arm_mean_value_loss']:.4f}\n"""
                 f"""{'Surrogate loss/arm:':>{pad}} {locs['arm_mean_surrogate_loss']:.4f}\n"""
-                f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
+                f"""{'Mean action noise std/leg:':>{pad}} {leg_mean_std.item():.2f}\n"""
+                f"""{'Mean action noise std/arm:':>{pad}} {arm_mean_std.item():.2f}\n"""
                 f"""{'Mean reward/leg:':>{pad}} {statistics.mean(locs['rewbuffer']["leg"]):.2f}\n"""
                 f"""{'Mean reward/arm:':>{pad}} {statistics.mean(locs['rewbuffer']["arm"]):.2f}\n"""
                 f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n"""
@@ -280,7 +283,8 @@ class ModularOnPolicyRunner(PolicyRunner):
                 f"""{'Surrogate loss/leg:':>{pad}} {locs['leg_mean_surrogate_loss']:.4f}\n"""
                 f"""{'Value function loss/arm:':>{pad}} {locs['arm_mean_value_loss']:.4f}\n"""
                 f"""{'Surrogate loss/arm:':>{pad}} {locs['arm_mean_surrogate_loss']:.4f}\n"""
-                f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
+                f"""{'Mean action noise std/leg:':>{pad}} {leg_mean_std.item():.2f}\n"""
+                f"""{'Mean action noise std/arm:':>{pad}} {arm_mean_std.item():.2f}\n"""
             )
             #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
             #   f"""{'Mean episode length/episode:':>{pad}} {locs['mean_trajectory_length']:.2f}\n""")
