@@ -6,6 +6,7 @@
 from .policy_runner import PolicyRunner
 from .on_policy_runner import OnPolicyRunner
 from .modular_on_policy_runner import ModularOnPolicyRunner
+from .arm_hand_modular_on_policy_runner import ArmHandModularOnPolicyRunner
 
 
-__all__ = ["PolicyRunner", "OnPolicyRunner", "ModularOnPolicyRunner"]
+__all__ = ["PolicyRunner", "OnPolicyRunner", "ModularOnPolicyRunner", "ArmHandModularOnPolicyRunner"]
