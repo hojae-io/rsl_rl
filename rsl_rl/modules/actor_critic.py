@@ -12,6 +12,7 @@ class ActorCritic(nn.Module):
                        activation="elu",
                        init_noise_std: float | list[float] = 1.0,
                        normalize_obs=False,
+                       log_std_bounds: list | None = None,
                        custom_initialization=False,
                        **kwargs):
 
@@ -25,6 +26,7 @@ class ActorCritic(nn.Module):
                            activation=activation,
                            init_noise_std=init_noise_std,
                            normalize_obs=normalize_obs,
+                           log_std_bounds=log_std_bounds,
                            custom_initialization=custom_initialization)
 
         self.critic = Critic(num_obs=num_critic_obs,
@@ -49,7 +51,7 @@ class ActorCritic(nn.Module):
     
     @property
     def std(self):
-        return self.actor.std
+        return self.actor.action_std
 
     def update_distribution(self, observations):
         self.actor.update_distribution(observations)

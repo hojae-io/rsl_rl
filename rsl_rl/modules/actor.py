@@ -15,7 +15,7 @@ class Actor(nn.Module):
                  activation="elu",
                  init_noise_std: float | list[float] = 1.0,
                  normalize_obs=False,
-                 log_std_bounds=None,
+                 log_std_bounds: list | None = None,
                  actions_limits=None,
                  custom_initialization=False,
                  **kwargs):
@@ -32,12 +32,14 @@ class Actor(nn.Module):
             self.obs_normalizer = torch.nn.Identity()  # no normalization
 
         self.mean_NN = create_MLP(num_obs, num_actions, hidden_dims, activation)
-        self.log_std_NN = None
 
         # Action noise
         if log_std_bounds is not None:
+            # log of standard deviation
             self.log_std_min, self.log_std_max = log_std_bounds
-            self.log_std_NN = create_MLP(num_obs, num_actions, hidden_dims, activation)
+            init_std = torch.tensor(init_noise_std) * torch.ones(num_actions)
+            init_log_std = init_std.log()
+            self.log_std = nn.Parameter(init_log_std)
         else:
             self.std = nn.Parameter(torch.tensor(init_noise_std) * torch.ones(num_actions))
 
@@ -70,13 +72,13 @@ class Actor(nn.Module):
 
     def update_distribution(self, observations):
         mean = self.mean_NN(self.norm_obs(observations))
-        if self.log_std_NN is None:
-            self.distribution = Normal(mean, mean*0. + self.std)
-        else: # TODO: Implement s.t. mean & log_std shares parameters only last layer is different!
-            log_std = self.log_std_NN(observations)
-            log_std = torch.clamp(log_std, min=self.log_std_min, max=self.log_std_max)
-            self.std = torch.exp(log_std)
-            self.distribution = Normal(mean, mean*0. + self.std)
+        if hasattr(self, "log_std"):
+            log_std = torch.clamp(self.log_std, min=self.log_std_min, max=self.log_std_max)
+            std = torch.exp(log_std).expand_as(mean)
+        else:
+            std = mean * 0.0 + self.std
+
+        self.distribution = Normal(mean, std)
 
     def act(self, observations):
         self.update_distribution(observations)
