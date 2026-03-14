@@ -238,7 +238,6 @@ class OnPolicyRunner(PolicyRunner):
             "model_state_dict": self.alg.actor_critic.state_dict(),
             "optimizer_state_dict": self.alg.optimizer.state_dict(),
             "iter": self.current_learning_iteration,
-            "learning_rate": self.alg.learning_rate,
             "infos": infos,
         }
 
@@ -275,12 +274,6 @@ class OnPolicyRunner(PolicyRunner):
         if load_optimizer:
             self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
         self.current_learning_iteration = loaded_dict["iter"]
-
-        if "learning_rate" in loaded_dict:
-            self.alg.learning_rate = loaded_dict["learning_rate"]
-            # Update optimizer learning rate
-            for param_group in self.alg.optimizer.param_groups:
-                param_group['lr'] = self.alg.learning_rate
 
         return loaded_dict["infos"]
 

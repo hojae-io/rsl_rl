@@ -337,8 +337,6 @@ class ArmHandModularOnPolicyRunner(PolicyRunner):
             "hand_model_state_dict": self.hand_alg.actor_critic.state_dict(),
             "hand_optimizer_state_dict": self.hand_alg.optimizer.state_dict(),
             "iter": self.current_learning_iteration,
-            "arm_learning_rate": self.arm_alg.learning_rate,
-            "hand_learning_rate": self.hand_alg.learning_rate,
             "infos": infos,
         }
 
@@ -376,19 +374,17 @@ class ArmHandModularOnPolicyRunner(PolicyRunner):
                 self.arm_alg.actor_critic.load_state_dict(loaded_dict["arm_model_state_dict"])
                 if load_optimizer:
                     self.arm_alg.optimizer.load_state_dict(loaded_dict["arm_optimizer_state_dict"])
-                self.current_learning_iteration = loaded_dict["iter"]
             else:
                 self.arm_alg.actor_critic.load_state_dict(loaded_dict["arm_model_state_dict"])
                 self.hand_alg.actor_critic.load_state_dict(loaded_dict["hand_model_state_dict"])
                 if load_optimizer:
                     self.arm_alg.optimizer.load_state_dict(loaded_dict["arm_optimizer_state_dict"])
                     self.hand_alg.optimizer.load_state_dict(loaded_dict["hand_optimizer_state_dict"])
-                self.current_learning_iteration = loaded_dict["iter"]
         else:
             self.arm_alg.actor_critic.load_state_dict(loaded_dict["model_state_dict"])
             if load_optimizer:
                 self.arm_alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
-            self.current_learning_iteration = loaded_dict["iter"]
+        self.current_learning_iteration = loaded_dict["iter"]
 
         return loaded_dict["infos"]
 
