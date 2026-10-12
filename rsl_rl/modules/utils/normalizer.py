@@ -26,7 +26,7 @@ class EmpiricalNormalization(nn.Module):
         self.register_buffer("_mean", torch.zeros(shape).unsqueeze(0))
         self.register_buffer("_var", torch.ones(shape).unsqueeze(0))
         self.register_buffer("_std", torch.ones(shape).unsqueeze(0))
-        self.count = 0
+        self.register_buffer("count", torch.tensor(0, dtype=torch.long))
 
     @property
     def mean(self):
@@ -35,6 +35,14 @@ class EmpiricalNormalization(nn.Module):
     @property
     def std(self):
         return self._std.squeeze(0).clone()
+
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        # checkpoints from before count was a buffer froze at until=1e8
+        state_dict.setdefault(prefix + "count", torch.tensor(10**8, dtype=torch.long))
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+        # a loaded normalizer keeps the statistics the policy was trained against
+        if self.count > 0:
+            self.until = int(self.count)
 
     def forward(self, x):
         """Normalize mean and variance of values based on empirical values.

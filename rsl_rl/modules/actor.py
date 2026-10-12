@@ -27,7 +27,7 @@ class Actor(nn.Module):
         super().__init__()
 
         if normalize_obs:
-            self.obs_normalizer = EmpiricalNormalization(num_obs, until=1.0e8)
+            self.obs_normalizer = EmpiricalNormalization(num_obs, until=None)
         else:
             self.obs_normalizer = torch.nn.Identity()  # no normalization
 

@@ -146,8 +146,10 @@ class PPO:
                         for param_group in self.optimizer.param_groups:
                             param_group['lr'] = self.learning_rate
 
-                # Surrogate loss
-                ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
+                # Surrogate loss; the log-ratio is bounded so exp() cannot overflow fp32
+                log_ratio = torch.clamp(
+                    actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch), -20.0, 20.0)
+                ratio = torch.exp(log_ratio)
                 surrogate = -torch.squeeze(advantages_batch) * ratio
                 surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(ratio, 1.0 - self.clip_param,
                                                                                 1.0 + self.clip_param)
@@ -168,8 +170,14 @@ class PPO:
                 # Gradient step
                 self.optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
-                self.optimizer.step()
+                # a non-finite norm would scale every gradient by nan; skip the minibatch instead
+                total_norm = nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+                if torch.isfinite(total_norm):
+                    self.optimizer.step()
+                    # the use-time clamp in Actor passes no gradient past the bound, so keep the parameter inside it
+                    actor = self.actor_critic.actor
+                    if hasattr(actor, "log_std"):
+                        actor.log_std.data.clamp_(actor.log_std_min, actor.log_std_max)
 
                 mean_value_loss += value_loss.item()
                 mean_surrogate_loss += surrogate_loss.item()
