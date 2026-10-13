@@ -109,11 +109,11 @@ class OnPolicyRunner:
 
             stop = time.time()
             learn_time = stop - start
-            self.current_learning_iteration = it
+            self.current_learning_iteration = it + 1
 
             # Log information
             self.logger.log(
-                it=it,
+                it=self.current_learning_iteration,
                 start_it=start_it,
                 total_it=total_it,
                 collect_time=collect_time,
@@ -125,8 +125,8 @@ class OnPolicyRunner:
             )
 
             # Save model
-            if self.logger.writer is not None and it % self.cfg["save_interval"] == 0:
-                self.save(os.path.join(self.logger.log_dir, f"model_{it}.pt"))  # type: ignore
+            if self.logger.writer is not None and self.current_learning_iteration % self.cfg["save_interval"] == 0:
+                self.save(os.path.join(self.logger.log_dir, f"model_{self.current_learning_iteration}.pt"))  # type: ignore
 
         # Save the final model after training and stop the logging writer
         if self.logger.writer is not None:

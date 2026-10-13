@@ -268,7 +268,7 @@ class Logger:
                 log_string += extras_string
 
             # Print footer
-            done_it = it + 1 - start_it
+            done_it = it - start_it
             remaining_it = total_it - start_it - done_it
             eta = self.tot_time / done_it * remaining_it
             log_string += (
