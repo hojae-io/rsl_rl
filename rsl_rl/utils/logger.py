@@ -126,7 +126,7 @@ class Logger:
         intrinsic_rewards: torch.Tensor | None = None,
     ) -> None:
         """Add metrics from the environment step to the buffers."""
-        if self.writer is not None:
+        if not self.disable_logs:
             if "episode" in extras:
                 self.ep_extras.append(extras["episode"])
             elif "log" in extras:
@@ -172,7 +172,8 @@ class Logger:
 
         If videos are available, they are uploaded to the logging service (W&B) as well.
         """
-        if self.writer is not None:
+        if not self.disable_logs:
+            add_scalar = self.writer.add_scalar if self.writer is not None else (lambda *_, **__: None)
             collection_size = self.cfg["num_steps_per_env"] * self.num_envs * self.gpu_world_size
             iteration_time = collect_time + learn_time
             self.tot_timesteps += collection_size
@@ -196,41 +197,37 @@ class Logger:
                         infotensor = torch.cat((infotensor, ep_info[key].to(self.device)))
                     value = torch.mean(infotensor)
                     if "/" in key:
-                        self.writer.add_scalar(key, value, it)  # type: ignore
+                        add_scalar(key, value, it)  # type: ignore
                         extras_string += f"""{f"{key}:":>{pad}} {value:.4f}\n"""
                     else:
-                        self.writer.add_scalar("Episode/" + key, value, it)  # type: ignore
+                        add_scalar("Episode/" + key, value, it)  # type: ignore
                         extras_string += f"""{f"Mean episode {key}:":>{pad}} {value:.4f}\n"""
 
             # Log losses
             for key, value in loss_dict.items():
-                self.writer.add_scalar(f"Loss/{key}", value, it)
-            self.writer.add_scalar("Loss/learning_rate", learning_rate, it)
+                add_scalar(f"Loss/{key}", value, it)
+            add_scalar("Loss/learning_rate", learning_rate, it)
 
             # Log std
-            self.writer.add_scalar("Policy/mean_std", action_std.mean().item(), it)
+            add_scalar("Policy/mean_std", action_std.mean().item(), it)
 
             # Log performance
             fps = int(collection_size / (collect_time + learn_time))
-            self.writer.add_scalar("Perf/total_fps", fps, it)
-            self.writer.add_scalar("Perf/collection_time", collect_time, it)
-            self.writer.add_scalar("Perf/learning_time", learn_time, it)
+            add_scalar("Perf/total_fps", fps, it)
+            add_scalar("Perf/collection_time", collect_time, it)
+            add_scalar("Perf/learning_time", learn_time, it)
 
             # Log rewards and episode length
             if len(self.rewbuffer) > 0:
                 if self.cfg["algorithm"].get("rnd_cfg"):
-                    self.writer.add_scalar("Rnd/mean_extrinsic_reward", statistics.mean(self.erewbuffer), it)
-                    self.writer.add_scalar("Rnd/mean_intrinsic_reward", statistics.mean(self.irewbuffer), it)
-                    self.writer.add_scalar("Rnd/weight", rnd_weight, it)  # type: ignore
-                self.writer.add_scalar("Train/mean_reward", statistics.mean(self.rewbuffer), it)
-                self.writer.add_scalar("Train/mean_episode_length", statistics.mean(self.lenbuffer), it)
+                    add_scalar("Rnd/mean_extrinsic_reward", statistics.mean(self.erewbuffer), it)
+                    add_scalar("Rnd/mean_intrinsic_reward", statistics.mean(self.irewbuffer), it)
+                    add_scalar("Rnd/weight", rnd_weight, it)  # type: ignore
+                add_scalar("Train/mean_reward", statistics.mean(self.rewbuffer), it)
+                add_scalar("Train/mean_episode_length", statistics.mean(self.lenbuffer), it)
                 if not isinstance(self.writer, WandbLogWriter):
-                    self.writer.add_scalar(
-                        "Train/mean_reward/time", statistics.mean(self.rewbuffer), int(self.tot_time)
-                    )
-                    self.writer.add_scalar(
-                        "Train/mean_episode_length/time", statistics.mean(self.lenbuffer), int(self.tot_time)
-                    )
+                    add_scalar("Train/mean_reward/time", statistics.mean(self.rewbuffer), int(self.tot_time))
+                    add_scalar("Train/mean_episode_length/time", statistics.mean(self.lenbuffer), int(self.tot_time))
 
             # Print to console
             log_string = f"""{"#" * width}\n"""
