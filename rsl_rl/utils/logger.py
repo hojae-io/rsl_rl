@@ -62,6 +62,11 @@ class Logger:
             self.cur_ereward_sum = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
             self.cur_ireward_sum = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
 
+        # Create AMP buffers
+        if self.cfg["algorithm"].get("amp_cfg"):
+            self.srewbuffer = deque(maxlen=100)
+            self.cur_sreward_sum = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+
         # Decide whether to disable logging
         # Note: We only log from the process with rank 0 (main process)
         self.disable_logs = is_distributed and gpu_global_rank != 0
@@ -124,6 +129,7 @@ class Logger:
         dones: torch.Tensor,
         extras: dict,
         intrinsic_rewards: torch.Tensor | None = None,
+        style_rewards: torch.Tensor | None = None,
     ) -> None:
         """Add metrics from the environment step to the buffers."""
         if not self.disable_logs:
@@ -139,6 +145,9 @@ class Logger:
                 self.cur_reward_sum += rewards + intrinsic_rewards
             else:
                 self.cur_reward_sum += rewards
+            if style_rewards is not None:
+                self.cur_sreward_sum += style_rewards
+                self.cur_reward_sum += style_rewards
             self.cur_episode_length += 1
 
             # Clear data for completed episodes
@@ -152,6 +161,9 @@ class Logger:
                 self.irewbuffer.extend(self.cur_ireward_sum[new_ids][:, 0].cpu().numpy().tolist())
                 self.cur_ereward_sum[new_ids] = 0
                 self.cur_ireward_sum[new_ids] = 0
+            if style_rewards is not None:
+                self.srewbuffer.extend(self.cur_sreward_sum[new_ids][:, 0].cpu().numpy().tolist())
+                self.cur_sreward_sum[new_ids] = 0
 
     def log(
         self,
@@ -223,6 +235,8 @@ class Logger:
                     add_scalar("Rnd/mean_extrinsic_reward", statistics.mean(self.erewbuffer), it)
                     add_scalar("Rnd/mean_intrinsic_reward", statistics.mean(self.irewbuffer), it)
                     add_scalar("Rnd/weight", rnd_weight, it)  # type: ignore
+                if self.cfg["algorithm"].get("amp_cfg"):
+                    add_scalar("Amp/mean_style_reward", statistics.mean(self.srewbuffer), it)
                 add_scalar("Train/mean_reward", statistics.mean(self.rewbuffer), it)
                 add_scalar("Train/mean_episode_length", statistics.mean(self.lenbuffer), it)
                 if not isinstance(self.writer, WandbLogWriter):
@@ -254,6 +268,8 @@ class Logger:
                 if self.cfg["algorithm"].get("rnd_cfg"):
                     log_string += f"""{"Mean extrinsic reward:":>{pad}} {statistics.mean(self.erewbuffer):.2f}\n"""
                     log_string += f"""{"Mean intrinsic reward:":>{pad}} {statistics.mean(self.irewbuffer):.2f}\n"""
+                if self.cfg["algorithm"].get("amp_cfg"):
+                    log_string += f"""{"Mean style reward:":>{pad}} {statistics.mean(self.srewbuffer):.2f}\n"""
                 log_string += f"""{"Mean reward:":>{pad}} {statistics.mean(self.rewbuffer):.2f}\n"""
                 log_string += f"""{"Mean episode length:":>{pad}} {statistics.mean(self.lenbuffer):.2f}\n"""
 

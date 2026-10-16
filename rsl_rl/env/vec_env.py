@@ -74,6 +74,7 @@ class VecEnv(ABC):
             - "student": Specified observation groups are used as input to the student model.
             - "teacher": Specified observation groups are used as input to the teacher model.
             - "rnd_state": Specified observation groups are used as input to the RND extension.
+            - "amp": Specified observation groups are used as input to the AMP extension.
 
             Incomplete or incorrect configurations are handled in the `resolve_obs_groups()` function in
             `rsl_rl/utils/utils.py`, which provides detailed information on the expected configuration.

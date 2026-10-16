@@ -12,7 +12,14 @@ from itertools import chain
 from tensordict import TensorDict
 
 from rsl_rl.env import VecEnv
-from rsl_rl.extensions import RandomNetworkDistillation, Symmetry, resolve_rnd_config, resolve_symmetry_config
+from rsl_rl.extensions import (
+    AdversarialMotionPrior,
+    RandomNetworkDistillation,
+    Symmetry,
+    resolve_amp_config,
+    resolve_rnd_config,
+    resolve_symmetry_config,
+)
 from rsl_rl.models import MLPModel
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import (
@@ -60,6 +67,8 @@ class PPO:
         device: str = "cpu",
         # RND parameters
         rnd_cfg: dict | None = None,
+        # AMP parameters
+        amp_cfg: dict | None = None,
         # Symmetry parameters
         symmetry_cfg: dict | None = None,
         # Distributed training parameters
@@ -82,6 +91,9 @@ class PPO:
 
         # RND extension
         self.rnd = RandomNetworkDistillation(device=self.device, **rnd_cfg) if rnd_cfg else None
+
+        # AMP extension
+        self.amp = AdversarialMotionPrior(device=self.device, **amp_cfg) if amp_cfg else None
 
         # Symmetry extension
         if symmetry_cfg is not None and (actor.is_recurrent or critic.is_recurrent):
@@ -150,6 +162,11 @@ class PPO:
             # Add intrinsic rewards to extrinsic rewards
             self.transition.rewards += self.intrinsic_rewards
 
+        # Compute the style rewards and add to task rewards
+        if self.amp:
+            self.style_rewards = self.amp.get_style_reward(self.transition.observations, obs, dones)
+            self.transition.rewards += self.style_rewards
+
         # Bootstrapping on time outs
         if "time_outs" in extras:
             self.transition.rewards += self.gamma * torch.squeeze(
@@ -197,6 +214,8 @@ class PPO:
         mean_entropy = 0
         # RND loss
         mean_rnd_loss = 0 if self.rnd else None
+        # AMP loss
+        mean_amp_loss = 0 if self.amp else None
         # Symmetry loss
         mean_symmetry_loss = 0 if self.symmetry else None
 
@@ -293,6 +312,9 @@ class PPO:
                     if self.symmetry.use_mirror_loss:
                         loss = loss + self.symmetry.mirror_loss_coeff * symmetry_loss
 
+            # AMP loss
+            amp_loss = self.amp.compute_loss(original_batch_size) if self.amp else None
+
             # Compute the gradients for PPO
             self.optimizer.zero_grad()
             loss.backward()
@@ -300,6 +322,10 @@ class PPO:
             if self.rnd:
                 self.rnd.optimizer.zero_grad()
                 rnd_loss.backward()
+            # Compute the gradients for AMP
+            if self.amp:
+                self.amp.optimizer.zero_grad()
+                amp_loss.backward()
 
             # Collect gradients from all GPUs
             if self.is_multi_gpu:
@@ -312,6 +338,9 @@ class PPO:
             # Apply the gradients for RND
             if self.rnd:
                 self.rnd.optimizer.step()
+            # Apply the gradients for AMP
+            if self.amp:
+                self.amp.optimizer.step()
 
             # Store the losses
             mean_value_loss += value_loss.item()
@@ -320,6 +349,9 @@ class PPO:
             # RND loss
             if mean_rnd_loss is not None:
                 mean_rnd_loss += rnd_loss.item()
+            # AMP loss
+            if mean_amp_loss is not None:
+                mean_amp_loss += amp_loss.item()
             # Symmetry loss
             if mean_symmetry_loss is not None:
                 mean_symmetry_loss += symmetry_loss.item()
@@ -338,6 +370,8 @@ class PPO:
         mean_entropy /= num_updates
         if mean_rnd_loss is not None:
             mean_rnd_loss /= num_updates
+        if mean_amp_loss is not None:
+            mean_amp_loss /= num_updates
         if mean_symmetry_loss is not None:
             mean_symmetry_loss /= num_updates
 
@@ -349,11 +383,15 @@ class PPO:
         }
         if self.rnd:
             loss_dict["rnd"] = mean_rnd_loss
+        if self.amp:
+            loss_dict["amp"] = mean_amp_loss
         if self.symmetry:
             loss_dict["symmetry"] = mean_symmetry_loss
 
         # Clear the storage
         self.storage.clear()
+        if self.amp:
+            self.amp.clear()
 
         return loss_dict
 
@@ -363,6 +401,8 @@ class PPO:
         self.critic.train()
         if self.rnd:
             self.rnd.train()
+        if self.amp:
+            self.amp.train()
 
     def eval_mode(self) -> None:
         """Set evaluation mode for learnable models."""
@@ -370,6 +410,8 @@ class PPO:
         self.critic.eval()
         if self.rnd:
             self.rnd.eval()
+        if self.amp:
+            self.amp.eval()
 
     def save(self) -> dict:
         """Return a dict of all models for saving."""
@@ -381,6 +423,9 @@ class PPO:
         if self.rnd:
             saved_dict["rnd_state_dict"] = self.rnd.state_dict()
             saved_dict["rnd_optimizer_state_dict"] = self.rnd.optimizer.state_dict()
+        if self.amp:
+            saved_dict["amp_state_dict"] = self.amp.state_dict()
+            saved_dict["amp_optimizer_state_dict"] = self.amp.optimizer.state_dict()
         return saved_dict
 
     def load(self, loaded_dict: dict, load_cfg: dict | None, strict: bool) -> bool:
@@ -393,6 +438,7 @@ class PPO:
                 "optimizer": True,
                 "iteration": True,
                 "rnd": True,
+                "amp": True,
             }
 
         # Load the specified models
@@ -406,6 +452,9 @@ class PPO:
         if load_cfg.get("rnd") and self.rnd:
             self.rnd.load_state_dict(loaded_dict["rnd_state_dict"], strict=strict)
             self.rnd.optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
+        if load_cfg.get("amp") and self.amp:
+            self.amp.load_state_dict(loaded_dict["amp_state_dict"], strict=strict)
+            self.amp.optimizer.load_state_dict(loaded_dict["amp_optimizer_state_dict"])
         return load_cfg.get("iteration", False)
 
     def get_policy(self) -> MLPModel:
@@ -435,10 +484,15 @@ class PPO:
         default_sets = ["actor", "critic"]
         if "rnd_cfg" in alg_cfg and alg_cfg["rnd_cfg"] is not None:
             default_sets.append("rnd_state")
+        if "amp_cfg" in alg_cfg and alg_cfg["amp_cfg"] is not None:
+            default_sets.append("amp")
         cfg["obs_groups"] = resolve_obs_groups(obs, cfg["obs_groups"], default_sets)
 
         # Resolve RND config if used
         alg_cfg = resolve_rnd_config(alg_cfg, obs, cfg["obs_groups"], env)
+
+        # Resolve AMP config if used
+        alg_cfg = resolve_amp_config(alg_cfg, obs, cfg["obs_groups"], env, cfg["num_steps_per_env"])
 
         # Resolve symmetry config if used
         alg_cfg = resolve_symmetry_config(alg_cfg, env)
@@ -467,6 +521,8 @@ class PPO:
         models = [self._raw_actor, self._raw_critic]
         if self.rnd:
             models += [self.rnd.predictor, self.rnd.target]
+        if self.amp:
+            models += [self.amp.discriminator]
         for model in models:
             for tensor in model.state_dict().values():
                 torch.distributed.broadcast(tensor, src=0)
@@ -480,5 +536,7 @@ class PPO:
         params = chain(self.actor.parameters(), self.critic.parameters())
         if self.rnd:
             params = chain(params, self.rnd.parameters())
+        if self.amp:
+            params = chain(params, self.amp.parameters())
         # Average the gradients across all GPUs in bounded buckets
         reduce_gradients_in_buckets(params, self.gpu_world_size, self.grad_reduce_bucket_mb)
